@@ -20,6 +20,7 @@ MUSIC_ID_1 = 1527781595677982910
 MUSIC_ID_2 = 1527788593148596435
 RESTRICTED = [MUSIC_ID_1, MUSIC_ID_2]
 WELCOME_NAME = "🎉-WELCOME"
+MEMBERS_ROLE_NAME = "Members"  # <-- Change this to exact name of your role, e.g. "members"
 
 @bot.event
 async def on_ready():
@@ -27,6 +28,18 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
+    # 1. AUTO ROLE - Give Members role
+    try:
+        role = discord.utils.get(member.guild.roles, name=MEMBERS_ROLE_NAME)
+        if role:
+            await member.add_roles(role)
+            print(f"Gave {MEMBERS_ROLE_NAME} to {member.name}")
+        else:
+            print(f"Role '{MEMBERS_ROLE_NAME}' not found!")
+    except Exception as e:
+        print(f"Role error: {e}")
+
+    # 2. WELCOME MESSAGE - Your old code
     for ch in member.guild.text_channels:
         if WELCOME_NAME in ch.name:
             embed = discord.Embed(description=f"Welcome {member.mention} to **{member.guild.name}**!", color=0xFF00FF)
