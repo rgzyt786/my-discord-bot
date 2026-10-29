@@ -20,6 +20,7 @@ MUSIC_ID_1 = 1527781595677982910
 MUSIC_ID_2 = 1527788593148596435
 RESTRICTED = [MUSIC_ID_1, MUSIC_ID_2]
 MEMBERS_ROLE_NAME = "Members"
+WELCOME_CHANNEL_ID = 1522296520030949526  # Your welcome channel
 
 @bot.event
 async def on_ready():
@@ -38,14 +39,9 @@ async def on_member_join(member):
     except Exception as e:
         print(f"Role error: {e}")
 
-    # 2. WELCOME MESSAGE - fixed to find any channel with "welcome" in name
+    # 2. WELCOME MESSAGE - Using ID (100% reliable)
     try:
-        welcome_channel = None
-        for ch in member.guild.text_channels:
-            if "welcome" in ch.name.lower():
-                welcome_channel = ch
-                break
-        
+        welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
         if welcome_channel:
             embed = discord.Embed(description=f"Welcome {member.mention} to **{member.guild.name}**!", color=0xFF00FF)
             embed.set_thumbnail(url=member.display_avatar.url)
@@ -53,7 +49,7 @@ async def on_member_join(member):
             await welcome_channel.send(content=f"Guys welcome {member.mention} 💜", embed=embed)
             print(f"Welcomed {member.name} in {welcome_channel.name}")
         else:
-            print("Welcome channel not found!")
+            print("Welcome channel ID not found!")
     except Exception as e:
         print(f"Welcome error: {e}")
 
