@@ -19,8 +19,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 MUSIC_ID_1 = 1527781595677982910
 MUSIC_ID_2 = 1527788593148596435
 RESTRICTED = [MUSIC_ID_1, MUSIC_ID_2]
-WELCOME_NAME = "🎉-WELCOME"
-MEMBERS_ROLE_NAME = "Members"  # <-- Change this to exact name of your role, e.g. "members"
+MEMBERS_ROLE_NAME = "Members"
 
 @bot.event
 async def on_ready():
@@ -28,7 +27,7 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    # 1. AUTO ROLE - Give Members role
+    # 1. AUTO ROLE - Members role
     try:
         role = discord.utils.get(member.guild.roles, name=MEMBERS_ROLE_NAME)
         if role:
@@ -39,24 +38,36 @@ async def on_member_join(member):
     except Exception as e:
         print(f"Role error: {e}")
 
-    # 2. WELCOME MESSAGE - Your old code
-    for ch in member.guild.text_channels:
-        if WELCOME_NAME in ch.name:
+    # 2. WELCOME MESSAGE - fixed to find any channel with "welcome" in name
+    try:
+        welcome_channel = None
+        for ch in member.guild.text_channels:
+            if "welcome" in ch.name.lower():
+                welcome_channel = ch
+                break
+        
+        if welcome_channel:
             embed = discord.Embed(description=f"Welcome {member.mention} to **{member.guild.name}**!", color=0xFF00FF)
             embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"{member.guild.name} • Thanks for joining")
-            try:
-                await ch.send(content=f"Guys welcome {member.mention} 💜", embed=embed)
-            except: pass
-            break
+            await welcome_channel.send(content=f"Guys welcome {member.mention} 💜", embed=embed)
+            print(f"Welcomed {member.name} in {welcome_channel.name}")
+        else:
+            print("Welcome channel not found!")
+    except Exception as e:
+        print(f"Welcome error: {e}")
 
 @bot.event
 async def on_message(message):
-    if message.author.bot: return
-    if message.channel.id not in RESTRICTED: return
+    if message.author.bot: 
+        return
+    if message.channel.id not in RESTRICTED: 
+        return
     if not message.content.startswith("m!"):
-        try: await message.delete()
-        except: pass
+        try: 
+            await message.delete()
+        except: 
+            pass
         return
     await bot.process_commands(message)
 
