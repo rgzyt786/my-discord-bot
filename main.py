@@ -17,18 +17,24 @@ intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- YOUR OLD IDS (DON'T CHANGE) ---
+# --- YOUR IDS ---
 MUSIC_ID_1 = 1527781595677982910
 MUSIC_ID_2 = 1527788593148596435
 RESTRICTED = [MUSIC_ID_1, MUSIC_ID_2]
 MEMBERS_ROLE_NAME = "Members"
 WELCOME_CHANNEL_ID = 1522296520030949526
-
-# --- NEW MEERA AI ID ---
 MEERA_CHANNEL_ID = 1565777117608677556
 
-# --- GROQ CLIENT ---
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+# --- ENV ---
+TOKEN = os.environ.get("TOKEN")
+GROQ_KEY = os.environ.get("GROQ_API_KEY")
+
+if not TOKEN:
+    print("ERROR: TOKEN not found in Environment!")
+if not GROQ_KEY:
+    print("ERROR: GROQ_API_KEY not found in Environment!")
+
+groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
 @bot.event
 async def on_ready():
@@ -37,7 +43,6 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    # 1. AUTO ROLE
     try:
         role = discord.utils.get(member.guild.roles, name=MEMBERS_ROLE_NAME)
         if role:
@@ -45,7 +50,6 @@ async def on_member_join(member):
     except Exception as e:
         print(f"Role error: {e}")
 
-    # 2. WELCOME MESSAGE - EXACT LIKE YOUR PICTURE
     try:
         welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
         if welcome_channel:
@@ -68,9 +72,7 @@ async def on_member_join(member):
             embed.set_author(name=f"Welcome to the crew, {member.display_name}! 🎉", icon_url=member.display_avatar.url)
             embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"Gamer's Syndicate ☠️ • Thanks for joining")
-            
             await welcome_channel.send(embed=embed)
-            print(f"Welcomed {member.name}")
     except Exception as e:
         print(f"Welcome error: {e}")
 
@@ -79,21 +81,19 @@ async def on_message(message):
     if message.author.bot: 
         return
 
-    # --- 1. MUSIC CHANNEL LOGIC (YOUR OLD CODE - SAME) ---
     if message.channel.id in RESTRICTED:
         if not message.content.startswith("m!"):
-            try: 
-                await message.delete()
-            except: 
-                pass
+            try: await message.delete()
+            except: pass
             return
         await bot.process_commands(message)
         return
 
-    # --- 2. MEERA AI LOGIC (ONLY IN 1565777117608677556) ---
     if message.channel.id == MEERA_CHANNEL_ID:
-        # Ignore empty messages or commands
         if not message.content or message.content.startswith("!"):
+            return
+        if not groq_client:
+            await message.reply("Meera's brain API key missing! Add GROQ_API_KEY in Render 😅")
             return
         
         async with message.channel.typing():
@@ -112,15 +112,18 @@ async def on_message(message):
                 await message.reply("Ayy my brain lagged 😅 ask again, I'm Meera!")
         return
 
-    # --- 3. OTHER CHANNELS: DO NOTHING (Meera stays silent) ---
     await bot.process_commands(message)
 
 def run_bot():
-    bot.run(os.environ.get("TOKEN"))
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("Cannot start bot - TOKEN missing")
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     Thread(target=run_bot).start()
     run_flask()
