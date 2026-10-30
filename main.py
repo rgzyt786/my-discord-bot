@@ -24,6 +24,8 @@ RESTRICTED = [MUSIC_ID_1, MUSIC_ID_2]
 MEMBERS_ROLE_NAME = "Members"
 WELCOME_CHANNEL_ID = 1522296520030949526
 MEERA_CHANNEL_ID = 1565777117608677556
+MEERA_CHANNEL_2 = 1565795643979731076
+MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -84,7 +86,7 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    if message.channel.id == MEERA_CHANNEL_ID:
+    if message.channel.id in MEERA_CHANNELS:
         if not message.content or message.content.startswith("!"):
             return
         if not groq_client:
