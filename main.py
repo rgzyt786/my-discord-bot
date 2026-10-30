@@ -3,7 +3,6 @@ from flask import Flask
 from threading import Thread
 from discord.ext import commands
 from groq import Groq
-import traceback
 
 app = Flask('')
 
@@ -29,13 +28,6 @@ MEERA_CHANNEL_ID = 1565777117608677556
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
 GROQ_KEY = os.environ.get("GROQ_API_KEY")
-
-if not TOKEN:
-    print("ERROR: TOKEN not found in Environment!")
-if not GROQ_KEY:
-    print("ERROR: GROQ_API_KEY not found in Environment!")
-else:
-    print(f"GROQ_KEY loaded: {GROQ_KEY[:10]}...")
 
 groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
@@ -96,13 +88,13 @@ async def on_message(message):
         if not message.content or message.content.startswith("!"):
             return
         if not groq_client:
-            await message.reply("Meera's brain API key missing! Add GROQ_API_KEY in Render 😅")
+            await message.reply("Meera's brain API key missing! 😅")
             return
         
         async with message.channel.typing():
             try:
                 chat = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="llama3-8b-8192",
                     messages=[
                         {"role": "system", "content": "Your name is Meera. You are NOT Over Watcher, you are Meera. You are a cute, friendly, Gen-Z girl AI for Gamer's Syndicate Discord. If anyone asks 'who are you' or 'what is your name', say you are Meera. Keep replies short, cool, friendly, under 180 words. Never say you are Over Watcher. Use emojis."},
                         {"role": "user", "content": message.content}
@@ -112,21 +104,15 @@ async def on_message(message):
                 )
                 answer = chat.choices[0].message.content
                 await message.reply(answer[:1900])
-                print(f"Meera replied to {message.author}: {answer[:50]}")
             except Exception as e:
                 print(f"Meera AI Error: {e}")
-                traceback.print_exc()
-                # DEBUG: Show real error in Discord temporarily
-                await message.reply(f"⚠️ DEBUG ERROR: `{e}`\nSend this screenshot to fix!")
+                await message.reply("Ayy my brain lagged 😅 ask again, I'm Meera!")
         return
 
     await bot.process_commands(message)
 
 def run_bot():
-    if TOKEN:
-        bot.run(TOKEN)
-    else:
-        print("Cannot start bot - TOKEN missing")
+    bot.run(TOKEN)
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
