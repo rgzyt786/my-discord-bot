@@ -94,7 +94,7 @@ async def on_message(message):
         async with message.channel.typing():
             try:
                 chat = groq_client.chat.completions.create(
-                    model="llama3-8b-8192",
+                    model="openai/gpt-oss-20b",
                     messages=[
                         {"role": "system", "content": "Your name is Meera. You are NOT Over Watcher, you are Meera. You are a cute, friendly, Gen-Z girl AI for Gamer's Syndicate Discord. If anyone asks 'who are you' or 'what is your name', say you are Meera. Keep replies short, cool, friendly, under 180 words. Never say you are Over Watcher. Use emojis."},
                         {"role": "user", "content": message.content}
