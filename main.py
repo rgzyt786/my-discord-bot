@@ -1,8 +1,9 @@
-import discord, os
+import discord, os, requests
 from flask import Flask
 from threading import Thread
-from discord.ext import commands
+from discord.ext import commands, tasks
 from groq import Groq
+from datetime import datetime
 
 app = Flask('')
 
@@ -26,6 +27,7 @@ WELCOME_CHANNEL_ID = 1522296520030949526
 MEERA_CHANNEL_ID = 1565777117608677556
 MEERA_CHANNEL_2 = 1565795643979731076
 MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
+FREE_GAMES_CHANNEL_ID = 1566079090648293396   # Free games announcements
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -33,10 +35,16 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
+# Keep track of already announced games so we don't spam
+announced_games = set()
+
 @bot.event
 async def on_ready():
     print(f"BOT ONLINE: {bot.user} as Meera")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="Meera in her channel"))
+    
+    if not check_free_games.is_running():
+        check_free_games.start()
 
 @bot.event
 async def on_member_join(member):
@@ -135,6 +143,83 @@ RULES:
         return
 
     await bot.process_commands(message)
+
+
+# ====================== FREE GAMES FEATURE ======================
+
+@tasks.loop(hours=4)
+async def check_free_games():
+    channel = bot.get_channel(FREE_GAMES_CHANNEL_ID)
+    if not channel:
+        print("Free games channel not found!")
+        return
+
+    platforms = {
+        "steam": "Steam",
+        "epic-games-store": "Epic Games Store"
+    }
+
+    for platform_key, platform_name in platforms.items():
+        try:
+            url = f"https://www.gamerpower.com/api/giveaways?platform={platform_key}&type=game"
+            response = requests.get(url, timeout=15)
+            if response.status_code != 200:
+                continue
+
+            games = response.json()
+            if not isinstance(games, list):
+                continue
+
+            for game in games:
+                game_id = str(game.get("id"))
+                if game_id in announced_games:
+                    continue
+
+                title = game.get("title", "Unknown Game")
+                end_date = game.get("end_date")
+                open_url = game.get("open_giveaway_url") or game.get("gamerpower_url") or "No link"
+                worth = game.get("worth", "N/A")
+                image = game.get("image") or game.get("thumbnail")
+
+                # Format free period
+                if end_date and end_date != "N/A":
+                    try:
+                        # GamerPower usually gives "2026-11-05 23:59:00"
+                        free_until = f"Free until **{end_date}**"
+                    except:
+                        free_until = f"Free until **{end_date}**"
+                else:
+                    free_until = "**Permanent / Free to Keep**"
+
+                # Create embed
+                embed = discord.Embed(
+                    title=f"🎁 Free Game Alert!",
+                    description=f"**{title}**\n\n"
+                                f"**Store:** {platform_name}\n"
+                                f"**Worth:** {worth}\n"
+                                f"{free_until}",
+                    color=0x00FF9F if platform_key == "epic-games-store" else 0x1B2838,
+                    url=open_url
+                )
+
+                if image:
+                    embed.set_image(url=image)
+
+                embed.set_footer(text="Gamer's Syndicate ☠️ • Claim it before it's gone!")
+                embed.timestamp = datetime.utcnow()
+
+                await channel.send(embed=embed)
+                announced_games.add(game_id)
+                print(f"Announced free game: {title} ({platform_name})")
+
+        except Exception as e:
+            print(f"Error checking {platform_name}: {e}")
+
+@check_free_games.before_loop
+async def before_check_free_games():
+    await bot.wait_until_ready()
+
+# ================================================================
 
 def run_bot():
     bot.run(TOKEN)
