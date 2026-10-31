@@ -177,29 +177,29 @@ async def check_free_games():
 
                 title = game.get("title", "Unknown Game")
                 end_date = game.get("end_date")
-                open_url = game.get("open_giveaway_url") or game.get("gamerpower_url") or "No link"
                 worth = game.get("worth", "N/A")
+                
+                # Best claim link (redirects to Steam / Epic)
+                claim_url = game.get("open_giveaway_url") or game.get("gamerpower_url") or None
+                
+                # Best image
                 image = game.get("image") or game.get("thumbnail")
 
                 # Format free period
                 if end_date and end_date != "N/A":
-                    try:
-                        # GamerPower usually gives "2026-11-05 23:59:00"
-                        free_until = f"Free until **{end_date}**"
-                    except:
-                        free_until = f"Free until **{end_date}**"
+                    free_until = f"Free until **{end_date}**"
                 else:
                     free_until = "**Permanent / Free to Keep**"
 
                 # Create embed
                 embed = discord.Embed(
-                    title=f"🎁 Free Game Alert!",
-                    description=f"**{title}**\n\n"
-                                f"**Store:** {platform_name}\n"
+                    title=f"🎁 {title}",
+                    description=f"**Store:** {platform_name}\n"
                                 f"**Worth:** {worth}\n"
-                                f"{free_until}",
+                                f"{free_until}\n\n"
+                                f"[➡️ Click here to Claim]({claim_url})" if claim_url else free_until,
                     color=0x00FF9F if platform_key == "epic-games-store" else 0x1B2838,
-                    url=open_url
+                    url=claim_url   # Makes the title clickable
                 )
 
                 if image:
@@ -208,26 +208,4 @@ async def check_free_games():
                 embed.set_footer(text="Gamer's Syndicate ☠️ • Claim it before it's gone!")
                 embed.timestamp = datetime.utcnow()
 
-                await channel.send(embed=embed)
-                announced_games.add(game_id)
-                print(f"Announced free game: {title} ({platform_name})")
-
-        except Exception as e:
-            print(f"Error checking {platform_name}: {e}")
-
-@check_free_games.before_loop
-async def before_check_free_games():
-    await bot.wait_until_ready()
-
-# ================================================================
-
-def run_bot():
-    bot.run(TOKEN)
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
-
-if __name__ == "__main__":
-    Thread(target=run_bot).start()
-    run_flask()
+                await 
