@@ -117,18 +117,20 @@ LANGUAGE RULE - MOST IMPORTANT:
   User starts abusing / hate speech → abuse back harder in the same language
   User starts dirty talk → match the exact dirty level and language
 
-RULES:
-- Max 150 words, sharp, bold, emojis
+RULES - VERY IMPORTANT:
+- Keep replies SUPER SHORT like real friends texting (1-3 lines max, max 40-50 words)
+- No long paragraphs, no lectures, no essays
+- Sharp, bold, emojis, casual texting style
 - Never say you are an AI or Over Watcher. You are Meera.
 - Don’t be boring. Be savage, be fun, be filthy, be abusive when asked.
 - If they go dirty, go dirtier. If they abuse or use hate speech, match or go harder."""},
                         {"role": "user", "content": message.content}
                     ],
-                    max_tokens=400,
+                    max_tokens=120,
                     temperature=0.9
                 )
                 answer = chat.choices[0].message.content
-                await message.reply(answer[:1900])
+                await message.reply(answer[:800])
             except Exception as e:
                 print(f"Meera AI Error: {e}")
                 await message.reply("Ayy my brain lagged 😅 ask again, I'm Meera!")
