@@ -27,7 +27,7 @@ WELCOME_CHANNEL_ID = 1522296520030949526
 MEERA_CHANNEL_ID = 1565777117608677556
 MEERA_CHANNEL_2 = 1565795643979731076
 MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
-FREE_GAMES_CHANNEL_ID = 1566079090648293396   # Free games announcements
+FREE_GAMES_CHANNEL_ID = 1566079090648293396
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -35,7 +35,6 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
-# Keep track of already announced games so we don't spam
 announced_games = set()
 
 @bot.event
@@ -178,28 +177,24 @@ async def check_free_games():
                 title = game.get("title", "Unknown Game")
                 end_date = game.get("end_date")
                 worth = game.get("worth", "N/A")
-                
-                # Best claim link (redirects to Steam / Epic)
-                claim_url = game.get("open_giveaway_url") or game.get("gamerpower_url") or None
-                
-                # Best image
+                claim_url = game.get("open_giveaway_url") or game.get("gamerpower_url")
                 image = game.get("image") or game.get("thumbnail")
 
-                # Format free period
                 if end_date and end_date != "N/A":
                     free_until = f"Free until **{end_date}**"
                 else:
                     free_until = "**Permanent / Free to Keep**"
 
-                # Create embed
+                # Safe description
+                description = f"**Store:** {platform_name}\n**Worth:** {worth}\n{free_until}"
+                if claim_url:
+                    description += f"\n\n[➡️ Click here to Claim]({claim_url})"
+
                 embed = discord.Embed(
                     title=f"🎁 {title}",
-                    description=f"**Store:** {platform_name}\n"
-                                f"**Worth:** {worth}\n"
-                                f"{free_until}\n\n"
-                                f"[➡️ Click here to Claim]({claim_url})" if claim_url else free_until,
+                    description=description,
                     color=0x00FF9F if platform_key == "epic-games-store" else 0x1B2838,
-                    url=claim_url   # Makes the title clickable
+                    url=claim_url
                 )
 
                 if image:
@@ -208,4 +203,26 @@ async def check_free_games():
                 embed.set_footer(text="Gamer's Syndicate ☠️ • Claim it before it's gone!")
                 embed.timestamp = datetime.utcnow()
 
-                await 
+                await channel.send(embed=embed)
+                announced_games.add(game_id)
+                print(f"Announced free game: {title} ({platform_name})")
+
+        except Exception as e:
+            print(f"Error checking {platform_name}: {e}")
+
+@check_free_games.before_loop
+async def before_check_free_games():
+    await bot.wait_until_ready()
+
+# ================================================================
+
+def run_bot():
+    bot.run(TOKEN)
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    Thread(target=run_bot).start()
+    run_flask()
