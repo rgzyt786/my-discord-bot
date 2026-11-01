@@ -322,39 +322,73 @@ async def on_member_update(before, after):
                     await send_other_log(embed)
                     return
 
+# =============== FIXED MESSAGE DELETE (using raw event) ===============
 @bot.event
-async def on_message_delete(message):
-    if not message.guild:
+async def on_raw_message_delete(payload):
+    # This event always fires, even if message is not in cache
+    if not payload.guild_id:
         return
 
-    # Ignore other bots, but ALWAYS log our own bot's messages
-    if message.author.bot and message.author.id != bot.user.id:
+    guild = bot.get_guild(payload.guild_id)
+    if not guild:
         return
 
+    channel = bot.get_channel(payload.channel_id)
+    if not channel:
+        return
+
+    # Try to get the message from cache (if available)
+    message = payload.cached_message
+
+    author = None
+    content = "No content available (message was not cached)"
+
+    if message:
+        author = message.author
+        content = message.content or ""
+        if not content and message.embeds:
+            content = "[Embed Message]"
+        if not content:
+            content = "No text content"
+    else:
+        # Message not in cache → we can only show limited info
+        content = "Message content not available (not in bot cache)"
+
+    # Find who deleted it
     deleter = None
-    async for entry in message.guild.audit_logs(limit=6, action=discord.AuditLogAction.message_delete):
-        if (entry.target.id == message.author.id and 
-            (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20):
-            deleter = entry.user
-            break
+    try:
+        async for entry in guild.audit_logs(limit=8, action=discord.AuditLogAction.message_delete):
+            if entry.target and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 30:
+                # When deleting someone else's message, target is the author
+                if message and entry.target.id == message.author.id:
+                    deleter = entry.user
+                    break
+                # Fallback: take the most recent message_delete action
+                if not message:
+                    deleter = entry.user
+                    break
+    except Exception as e:
+        print(f"Audit log error: {e}")
 
-    # Better content display (works for embeds too)
-    content = message.content[:1000] if message.content else ""
-    if not content and message.embeds:
-        content = "[Embed Message]"
-    if not content:
-        content = "No text content"
+    # Build description
+    if author:
+        author_text = f"{author.mention} (`{author}`)"
+    else:
+        author_text = f"Unknown (ID: {payload.cached_message.author.id if payload.cached_message else 'N/A'})"
 
     description = (
-        f"**Author:** {message.author.mention}\n"
-        f"**Channel:** {message.channel.mention}\n"
-        f"**Content:**\n```{content}```\n\n"
+        f"**Author:** {author_text}\n"
+        f"**Channel:** {channel.mention}\n"
+        f"**Content:**\n```{content[:1000]}```\n\n"
     )
 
-    if deleter and deleter.id != message.author.id:
-        description += f"**Deleted by:** {deleter.mention}"
+    if deleter:
+        if message and deleter.id == message.author.id:
+            description += f"**Deleted by:** Self"
+        else:
+            description += f"**Deleted by:** {deleter.mention} (`{deleter}`)"
     else:
-        description += f"**Deleted by:** Self-delete / Unknown"
+        description += f"**Deleted by:** Unknown (No audit log found)"
 
     embed = discord.Embed(
         title="🗑️ Message Deleted",
@@ -362,7 +396,8 @@ async def on_message_delete(message):
         color=0xe74c3c,
         timestamp=datetime.now(timezone.utc)
     )
-    embed.set_footer(text=f"Message ID: {message.id}")
+    embed.set_footer(text=f"Message ID: {payload.message_id}")
+
     await send_other_log(embed)
 
 @bot.event
