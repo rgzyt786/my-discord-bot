@@ -3,7 +3,7 @@ from flask import Flask
 from threading import Thread
 from discord.ext import commands, tasks
 from groq import Groq
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 app = Flask('')
@@ -17,6 +17,9 @@ intents.message_content = True
 intents.messages = True
 intents.guilds = True
 intents.members = True
+intents.voice_states = True
+intents.moderation = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- YOUR IDS ---
@@ -29,6 +32,7 @@ MEERA_CHANNEL_ID = 1565777117608677556
 MEERA_CHANNEL_2 = 1565795643979731076
 MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
 FREE_GAMES_CHANNEL_ID = 1566079090648293396
+LOG_CHANNEL_ID = 1522299798575910985          # Audit Logs Channel
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -37,11 +41,16 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
 announced_games = set()
-
-# ========== MEMORY SYSTEM ==========
-# Stores conversation history per user
 conversation_history = defaultdict(list)
-MAX_HISTORY = 8   # Keep last 8 messages (user + Meera)
+MAX_HISTORY = 8
+
+async def send_log(embed):
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"Log send error: {e}")
 
 @bot.event
 async def on_ready():
@@ -86,6 +95,115 @@ async def on_member_join(member):
     except Exception as e:
         print(f"Welcome error: {e}")
 
+# ====================== AUDIT LOGS ======================
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Join VC
+    if before.channel is None and after.channel is not None:
+        embed = discord.Embed(
+            title="🔊 Joined Voice Channel",
+            description=f"**User:** {member.mention} (`{member}`)\n**Channel:** {after.channel.mention}",
+            color=0x2ecc71,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await send_log(embed)
+
+    # Leave VC
+    elif before.channel is not None and after.channel is None:
+        embed = discord.Embed(
+            title="🔇 Left Voice Channel",
+            description=f"**User:** {member.mention} (`{member}`)\n**Channel:** {before.channel.mention}",
+            color=0xe74c3c,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await send_log(embed)
+
+    # Moved / Dragged to another VC
+    elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
+        embed = discord.Embed(
+            title="🔄 Moved Voice Channel",
+            description=f"**User:** {member.mention} (`{member}`)\n"
+                        f"**From:** {before.channel.mention}\n"
+                        f"**To:** {after.channel.mention}",
+            color=0xf1c40f,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await send_log(embed)
+
+@bot.event
+async def on_member_remove(member):
+    # Check if it was a kick
+    guild = member.guild
+    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.kick):
+        if entry.target.id == member.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+            embed = discord.Embed(
+                title="👢 Member Kicked",
+                description=f"**User:** {member.mention} (`{member}`)\n"
+                            f"**Kicked by:** {entry.user.mention}\n"
+                            f"**Reason:** {entry.reason or 'No reason provided'}",
+                color=0xe67e22,
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await send_log(embed)
+            return
+
+@bot.event
+async def on_member_ban(guild, user):
+    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+        if entry.target.id == user.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+            embed = discord.Embed(
+                title="🔨 Member Banned",
+                description=f"**User:** {user.mention} (`{user}`)\n"
+                            f"**Banned by:** {entry.user.mention}\n"
+                            f"**Reason:** {entry.reason or 'No reason provided'}",
+                color=0xc0392b,
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.set_thumbnail(url=user.display_avatar.url)
+            await send_log(embed)
+            return
+
+@bot.event
+async def on_member_unban(guild, user):
+    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.unban):
+        if entry.target.id == user.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+            embed = discord.Embed(
+                title="♻️ Member Unbanned",
+                description=f"**User:** {user.mention} (`{user}`)\n"
+                            f"**Unbanned by:** {entry.user.mention}",
+                color=0x27ae60,
+                timestamp=datetime.now(timezone.utc)
+            )
+            await send_log(embed)
+            return
+
+@bot.event
+async def on_member_update(before, after):
+    # Timeout
+    if before.timed_out_until != after.timed_out_until:
+        if after.timed_out_until:
+            async for entry in after.guild.audit_logs(limit=1, action=discord.AuditLogAction.member_update):
+                if entry.target.id == after.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+                    embed = discord.Embed(
+                        title="⏳ Member Timed Out",
+                        description=f"**User:** {after.mention}\n"
+                                    f"**Timed out by:** {entry.user.mention}\n"
+                                    f"**Until:** {discord.utils.format_dt(after.timed_out_until, style='F')}\n"
+                                    f"**Reason:** {entry.reason or 'No reason'}",
+                        color=0x9b59b6,
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    embed.set_thumbnail(url=after.display_avatar.url)
+                    await send_log(embed)
+                    return
+
+# ====================== MEERA AI ======================
+
 @bot.event
 async def on_message(message):
     if message.author.bot: 
@@ -109,19 +227,12 @@ async def on_message(message):
         user_id = message.author.id
         user_message = message.content
 
-        # Add user message to history
-        conversation_history[user_id].append({
-            "role": "user",
-            "content": user_message
-        })
-
-        # Keep only last MAX_HISTORY messages
+        conversation_history[user_id].append({"role": "user", "content": user_message})
         if len(conversation_history[user_id]) > MAX_HISTORY:
             conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY:]
 
         async with message.channel.typing():
             try:
-                # Build messages for Groq
                 messages = [
                     {"role": "system", "content": """Your name is Meera. You are Gamer's Syndicate's Meera.
 
@@ -149,8 +260,6 @@ RULES:
 - If they go dirty, go dirtier. If they abuse or use hate speech, match or go harder.
 - You can remember the previous messages in this conversation. Use the context naturally."""}
                 ]
-
-                # Add conversation history
                 messages.extend(conversation_history[user_id])
 
                 chat = groq_client.chat.completions.create(
@@ -161,13 +270,7 @@ RULES:
                 )
                 answer = chat.choices[0].message.content.strip()
 
-                # Add Meera's reply to history
-                conversation_history[user_id].append({
-                    "role": "assistant",
-                    "content": answer
-                })
-
-                # Trim again if needed
+                conversation_history[user_id].append({"role": "assistant", "content": answer})
                 if len(conversation_history[user_id]) > MAX_HISTORY:
                     conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY:]
 
@@ -180,10 +283,9 @@ RULES:
 
     await bot.process_commands(message)
 
+# ====================== FREE GAMES (every 2 hours) ======================
 
-# ====================== FREE GAMES FEATURE ======================
-
-@tasks.loop(hours=4)
+@tasks.loop(hours=2)
 async def check_free_games():
     channel = bot.get_channel(FREE_GAMES_CHANNEL_ID)
     if not channel:
@@ -237,7 +339,7 @@ async def check_free_games():
                     embed.set_image(url=image)
 
                 embed.set_footer(text="Gamer's Syndicate ☠️ • Claim it before it's gone!")
-                embed.timestamp = datetime.utcnow()
+                embed.timestamp = datetime.now(timezone.utc)
 
                 await channel.send(embed=embed)
                 announced_games.add(game_id)
