@@ -32,7 +32,8 @@ MEERA_CHANNEL_ID = 1565777117608677556
 MEERA_CHANNEL_2 = 1565795643979731076
 MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
 FREE_GAMES_CHANNEL_ID = 1566079090648293396
-LOG_CHANNEL_ID = 1522299798575910985          # Audit Logs Channel
+VC_LOG_CHANNEL_ID = 1522299798575910985      # VC related logs
+OTHER_LOG_CHANNEL_ID = 1566410101571719258   # Everything else
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -44,13 +45,21 @@ announced_games = set()
 conversation_history = defaultdict(list)
 MAX_HISTORY = 8
 
-async def send_log(embed):
-    channel = bot.get_channel(LOG_CHANNEL_ID)
+async def send_vc_log(embed):
+    channel = bot.get_channel(VC_LOG_CHANNEL_ID)
     if channel:
         try:
             await channel.send(embed=embed)
         except Exception as e:
-            print(f"Log send error: {e}")
+            print(f"VC Log error: {e}")
+
+async def send_other_log(embed):
+    channel = bot.get_channel(OTHER_LOG_CHANNEL_ID)
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"Other Log error: {e}")
 
 @bot.event
 async def on_ready():
@@ -95,7 +104,7 @@ async def on_member_join(member):
     except Exception as e:
         print(f"Welcome error: {e}")
 
-# ====================== AUDIT LOGS ======================
+# ====================== VC LOGS ======================
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -108,10 +117,25 @@ async def on_voice_state_update(member, before, after):
             timestamp=datetime.now(timezone.utc)
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        await send_log(embed)
+        await send_vc_log(embed)
+        return
 
-    # Leave VC
-    elif before.channel is not None and after.channel is None:
+    # Leave VC / Force Disconnect
+    if before.channel is not None and after.channel is None:
+        async for entry in member.guild.audit_logs(limit=3, action=discord.AuditLogAction.member_disconnect):
+            if (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 15:
+                embed = discord.Embed(
+                    title="⛔ Force Disconnected from VC",
+                    description=f"**User:** {member.mention} (`{member}`)\n"
+                                f"**Disconnected by:** {entry.user.mention}\n"
+                                f"**From:** {before.channel.mention}",
+                    color=0xe74c3c,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_thumbnail(url=member.display_avatar.url)
+                await send_vc_log(embed)
+                return
+
         embed = discord.Embed(
             title="🔇 Left Voice Channel",
             description=f"**User:** {member.mention} (`{member}`)\n**Channel:** {before.channel.mention}",
@@ -119,88 +143,192 @@ async def on_voice_state_update(member, before, after):
             timestamp=datetime.now(timezone.utc)
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        await send_log(embed)
+        await send_vc_log(embed)
+        return
 
-    # Moved / Dragged to another VC
-    elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
+    # Moved / Dragged
+    if before.channel and after.channel and before.channel.id != after.channel.id:
+        async for entry in member.guild.audit_logs(limit=3, action=discord.AuditLogAction.member_move):
+            if entry.target.id == member.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 15:
+                embed = discord.Embed(
+                    title="📌 Dragged / Moved by Moderator",
+                    description=f"**User:** {member.mention}\n**Moved by:** {entry.user.mention}\n"
+                                f"**From:** {before.channel.mention}\n**To:** {after.channel.mention}",
+                    color=0xf39c12,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_thumbnail(url=member.display_avatar.url)
+                await send_vc_log(embed)
+                return
+
         embed = discord.Embed(
             title="🔄 Moved Voice Channel",
-            description=f"**User:** {member.mention} (`{member}`)\n"
-                        f"**From:** {before.channel.mention}\n"
-                        f"**To:** {after.channel.mention}",
+            description=f"**User:** {member.mention}\n**From:** {before.channel.mention}\n**To:** {after.channel.mention}",
             color=0xf1c40f,
             timestamp=datetime.now(timezone.utc)
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        await send_log(embed)
+        await send_vc_log(embed)
+        return
+
+    # Voice Mute / Deafen
+    if before.mute != after.mute or before.deaf != after.deaf:
+        async for entry in member.guild.audit_logs(limit=3, action=discord.AuditLogAction.member_update):
+            if entry.target.id == member.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 15:
+                changes = []
+                if before.mute != after.mute:
+                    changes.append(f"Mute: {'Yes' if after.mute else 'No'}")
+                if before.deaf != after.deaf:
+                    changes.append(f"Deafen: {'Yes' if after.deaf else 'No'}")
+                
+                embed = discord.Embed(
+                    title="🔇 Voice Mute / Deafen Updated",
+                    description=f"**User:** {member.mention}\n**By:** {entry.user.mention}\n**Changes:** {', '.join(changes)}",
+                    color=0x3498db,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_thumbnail(url=member.display_avatar.url)
+                await send_vc_log(embed)
+                return
+
+# ====================== OTHER LOGS ======================
 
 @bot.event
 async def on_member_remove(member):
-    # Check if it was a kick
-    guild = member.guild
-    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.kick):
+    # Kick
+    async for entry in member.guild.audit_logs(limit=3, action=discord.AuditLogAction.kick):
         if entry.target.id == member.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
             embed = discord.Embed(
                 title="👢 Member Kicked",
-                description=f"**User:** {member.mention} (`{member}`)\n"
-                            f"**Kicked by:** {entry.user.mention}\n"
-                            f"**Reason:** {entry.reason or 'No reason provided'}",
+                description=f"**User:** {member.mention} (`{member}`)\n**Kicked by:** {entry.user.mention}\n**Reason:** {entry.reason or 'No reason'}",
                 color=0xe67e22,
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_thumbnail(url=member.display_avatar.url)
-            await send_log(embed)
+            await send_other_log(embed)
             return
+
+    # Normal Leave
+    embed = discord.Embed(
+        title="👋 Member Left",
+        description=f"**User:** {member.mention} (`{member}`)\n**Account Created:** {discord.utils.format_dt(member.created_at, 'R')}",
+        color=0x95a5a6,
+        timestamp=datetime.now(timezone.utc)
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await send_other_log(embed)
 
 @bot.event
 async def on_member_ban(guild, user):
-    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+    async for entry in guild.audit_logs(limit=3, action=discord.AuditLogAction.ban):
         if entry.target.id == user.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
             embed = discord.Embed(
                 title="🔨 Member Banned",
-                description=f"**User:** {user.mention} (`{user}`)\n"
-                            f"**Banned by:** {entry.user.mention}\n"
-                            f"**Reason:** {entry.reason or 'No reason provided'}",
+                description=f"**User:** {user} (`{user.id}`)\n**Banned by:** {entry.user.mention}\n**Reason:** {entry.reason or 'No reason'}",
                 color=0xc0392b,
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_thumbnail(url=user.display_avatar.url)
-            await send_log(embed)
+            await send_other_log(embed)
             return
 
 @bot.event
 async def on_member_unban(guild, user):
-    async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.unban):
+    async for entry in guild.audit_logs(limit=3, action=discord.AuditLogAction.unban):
         if entry.target.id == user.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
             embed = discord.Embed(
                 title="♻️ Member Unbanned",
-                description=f"**User:** {user.mention} (`{user}`)\n"
-                            f"**Unbanned by:** {entry.user.mention}",
+                description=f"**User:** {user} (`{user.id}`)\n**Unbanned by:** {entry.user.mention}",
                 color=0x27ae60,
                 timestamp=datetime.now(timezone.utc)
             )
-            await send_log(embed)
+            await send_other_log(embed)
             return
 
 @bot.event
 async def on_member_update(before, after):
     # Timeout
-    if before.timed_out_until != after.timed_out_until:
-        if after.timed_out_until:
-            async for entry in after.guild.audit_logs(limit=1, action=discord.AuditLogAction.member_update):
+    if before.timed_out_until != after.timed_out_until and after.timed_out_until:
+        async for entry in after.guild.audit_logs(limit=3, action=discord.AuditLogAction.member_update):
+            if entry.target.id == after.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+                embed = discord.Embed(
+                    title="⏳ Member Timed Out",
+                    description=f"**User:** {after.mention}\n**By:** {entry.user.mention}\n**Until:** {discord.utils.format_dt(after.timed_out_until, 'F')}\n**Reason:** {entry.reason or 'No reason'}",
+                    color=0x9b59b6,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_thumbnail(url=after.display_avatar.url)
+                await send_other_log(embed)
+                return
+
+    # Nickname Change
+    if before.nick != after.nick:
+        embed = discord.Embed(
+            title="📝 Nickname Changed",
+            description=f"**User:** {after.mention}\n**Before:** `{before.nick or before.name}`\n**After:** `{after.nick or after.name}`",
+            color=0x1abc9c,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=after.display_avatar.url)
+        await send_other_log(embed)
+
+    # Role Add / Remove
+    if before.roles != after.roles:
+        added = [r for r in after.roles if r not in before.roles]
+        removed = [r for r in before.roles if r not in after.roles]
+
+        if added or removed:
+            async for entry in after.guild.audit_logs(limit=5, action=discord.AuditLogAction.member_role_update):
                 if entry.target.id == after.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
+                    desc = f"**User:** {after.mention}\n**By:** {entry.user.mention}\n"
+                    if added:
+                        desc += f"**Added:** {', '.join(r.mention for r in added)}\n"
+                    if removed:
+                        desc += f"**Removed:** {', '.join(r.mention for r in removed)}"
+                    
                     embed = discord.Embed(
-                        title="⏳ Member Timed Out",
-                        description=f"**User:** {after.mention}\n"
-                                    f"**Timed out by:** {entry.user.mention}\n"
-                                    f"**Until:** {discord.utils.format_dt(after.timed_out_until, style='F')}\n"
-                                    f"**Reason:** {entry.reason or 'No reason'}",
+                        title="🎭 Roles Updated",
+                        description=desc,
                         color=0x9b59b6,
                         timestamp=datetime.now(timezone.utc)
                     )
                     embed.set_thumbnail(url=after.display_avatar.url)
-                    await send_log(embed)
+                    await send_other_log(embed)
                     return
+
+@bot.event
+async def on_message_delete(message):
+    if message.author.bot or not message.guild:
+        return
+
+    embed = discord.Embed(
+        title="🗑️ Message Deleted",
+        description=f"**Author:** {message.author.mention}\n**Channel:** {message.channel.mention}\n**Content:**\n```{message.content[:1000] or 'No text content'}```",
+        color=0xe74c3c,
+        timestamp=datetime.now(timezone.utc)
+    )
+    embed.set_footer(text=f"Message ID: {message.id}")
+    await send_other_log(embed)
+
+@bot.event
+async def on_guild_channel_create(channel):
+    embed = discord.Embed(
+        title="📁 Channel Created",
+        description=f"**Channel:** {channel.mention}\n**Type:** {str(channel.type).replace('_', ' ').title()}",
+        color=0x2ecc71,
+        timestamp=datetime.now(timezone.utc)
+    )
+    await send_other_log(embed)
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    embed = discord.Embed(
+        title="📁 Channel Deleted",
+        description=f"**Channel Name:** `{channel.name}`\n**Type:** {str(channel.type).replace('_', ' ').title()}",
+        color=0xe74c3c,
+        timestamp=datetime.now(timezone.utc)
+    )
+    await send_other_log(embed)
 
 # ====================== MEERA AI ======================
 
@@ -283,13 +411,12 @@ RULES:
 
     await bot.process_commands(message)
 
-# ====================== FREE GAMES (every 2 hours) ======================
+# ====================== FREE GAMES ======================
 
 @tasks.loop(hours=2)
 async def check_free_games():
     channel = bot.get_channel(FREE_GAMES_CHANNEL_ID)
     if not channel:
-        print("Free games channel not found!")
         return
 
     platforms = {
@@ -319,10 +446,7 @@ async def check_free_games():
                 claim_url = game.get("open_giveaway_url") or game.get("gamerpower_url")
                 image = game.get("image") or game.get("thumbnail")
 
-                if end_date and end_date != "N/A":
-                    free_until = f"Free until **{end_date}**"
-                else:
-                    free_until = "**Permanent / Free to Keep**"
+                free_until = f"Free until **{end_date}**" if end_date and end_date != "N/A" else "**Permanent / Free to Keep**"
 
                 description = f"**Store:** {platform_name}\n**Worth:** {worth}\n{free_until}"
                 if claim_url:
@@ -334,16 +458,13 @@ async def check_free_games():
                     color=0x00FF9F if platform_key == "epic-games-store" else 0x1B2838,
                     url=claim_url
                 )
-
                 if image:
                     embed.set_image(url=image)
-
                 embed.set_footer(text="Gamer's Syndicate ☠️ • Claim it before it's gone!")
                 embed.timestamp = datetime.now(timezone.utc)
 
                 await channel.send(embed=embed)
                 announced_games.add(game_id)
-                print(f"Announced free game: {title} ({platform_name})")
 
         except Exception as e:
             print(f"Error checking {platform_name}: {e}")
@@ -351,8 +472,6 @@ async def check_free_games():
 @check_free_games.before_loop
 async def before_check_free_games():
     await bot.wait_until_ready()
-
-# ================================================================
 
 def run_bot():
     bot.run(TOKEN)
