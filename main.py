@@ -271,7 +271,6 @@ async def on_member_update(before, after):
         changer = None
         async for entry in after.guild.audit_logs(limit=5, action=discord.AuditLogAction.member_update):
             if entry.target.id == after.id and (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 20:
-                # Check if the change was actually a nick change
                 for change in entry.changes:
                     if change.key == "nick":
                         changer = entry.user
@@ -325,7 +324,11 @@ async def on_member_update(before, after):
 
 @bot.event
 async def on_message_delete(message):
-    if message.author.bot or not message.guild:
+    if not message.guild:
+        return
+
+    # Ignore other bots, but ALWAYS log our own bot's messages
+    if message.author.bot and message.author.id != bot.user.id:
         return
 
     deleter = None
@@ -335,10 +338,17 @@ async def on_message_delete(message):
             deleter = entry.user
             break
 
+    # Better content display (works for embeds too)
+    content = message.content[:1000] if message.content else ""
+    if not content and message.embeds:
+        content = "[Embed Message]"
+    if not content:
+        content = "No text content"
+
     description = (
         f"**Author:** {message.author.mention}\n"
         f"**Channel:** {message.channel.mention}\n"
-        f"**Content:**\n```{message.content[:1000] or 'No text content'}```\n\n"
+        f"**Content:**\n```{content}```\n\n"
     )
 
     if deleter and deleter.id != message.author.id:
