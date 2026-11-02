@@ -5,6 +5,8 @@ from discord.ext import commands, tasks
 from groq import Groq
 from datetime import datetime, timezone
 from collections import defaultdict
+import re
+import asyncio
 
 app = Flask('')
 @app.route('/')
@@ -47,8 +49,22 @@ MAX_HISTORY = 8
 # --- SHOPIFY PRODUCT POSTER ---
 STORE_URL = "https://quicktoshop.in"
 product_index = 0          # cycles through the catalog
-cached_products = []       # list of product dicts
+cached_products = []       # list of product dicts (already prioritized)
 last_fetch_time = None
+
+# Keywords used to detect priority categories
+GAMING_KEYWORDS = [
+    "game", "gaming", "controller", "joystick", "headset", "rgb led",
+    "rgb strip", "console", "keyboard", "mouse pad", "mousepad"
+]
+ELECTRONICS_TYPES = {"Electronics & Accessories"}
+FEMALE_TYPES = {"Jewellery & Accessories", "Beauty & Personal Care"}
+FEMALE_TAGS = {"gift-her", "jewellery-accessories", "beauty-personal-care"}
+FEMALE_KEYWORDS = [
+    "necklace", "earring", "bracelet", "ring", "hair", "makeup",
+    "beauty", "lipstick", "eyeliner", "trimmer", "facial", "curler",
+    "jewellery", "jewelry", "clip", "comb", "towel wrap"
+]
 
 async def send_vc_log(embed):
     channel = bot.get_channel(VC_LOG_CHANNEL_ID)
@@ -66,8 +82,42 @@ async def send_other_log(embed):
         except Exception as e:
             print(f"Other Log error: {e}")
 
+def get_product_priority(product):
+    """
+    Return a priority number (lower = higher priority).
+    0 = Gaming
+    1 = Electronic accessories
+    2 = Female accessories
+    3 = Everything else
+    """
+    title = (product.get("title") or "").lower()
+    product_type = product.get("product_type") or ""
+    tags = set(t.lower() for t in product.get("tags", []))
+    body = (product.get("body_html") or "").lower()
+
+    # 0 - Gaming
+    for kw in GAMING_KEYWORDS:
+        if kw in title or kw in body or any(kw in t for t in tags):
+            return 0
+
+    # 1 - Electronic accessories
+    if product_type in ELECTRONICS_TYPES or "electronics-accessories" in tags:
+        return 1
+
+    # 2 - Female accessories
+    if product_type in FEMALE_TYPES:
+        return 2
+    if tags & FEMALE_TAGS:
+        return 2
+    for kw in FEMALE_KEYWORDS:
+        if kw in title:
+            return 2
+
+    # 3 - Rest
+    return 3
+
 def fetch_all_products():
-    """Fetch every product from the Shopify store (paginated)."""
+    """Fetch every product from the Shopify store (paginated) and sort by priority."""
     all_products = []
     page = 1
     while True:
@@ -88,9 +138,21 @@ def fetch_all_products():
         except Exception as e:
             print(f"Error fetching products page {page}: {e}")
             break
+
+    # Sort so highest priority (lowest number) comes first.
+    # Within the same priority we keep original order for stability.
+    all_products.sort(key=lambda p: (get_product_priority(p), p.get("id", 0)))
+
+    print(f"Fetched and prioritized {len(all_products)} products")
+    # Quick debug of priority distribution
+    counts = {0: 0, 1: 0, 2: 0, 3: 0}
+    for p in all_products:
+        counts[get_product_priority(p)] += 1
+    print(f"Priority counts → Gaming: {counts[0]}, Electronics: {counts[1]}, Female: {counts[2]}, Other: {counts[3]}")
+
     return all_products
 
-def get_next_products(count=3):
+def get_next_products(count=5):
     """Return the next `count` products, cycling from the start when finished."""
     global product_index, cached_products, last_fetch_time
 
@@ -104,7 +166,7 @@ def get_next_products(count=3):
     if need_refresh:
         cached_products = fetch_all_products()
         last_fetch_time = now
-        print(f"Fetched {len(cached_products)} products from store")
+        product_index = 0   # restart from the highest-priority items after refresh
 
     if not cached_products:
         return []
@@ -142,11 +204,8 @@ def make_product_embed(product):
 
     # Short clean description (strip HTML tags roughly)
     body = product.get("body_html", "") or ""
-    # very light cleanup
     body = body.replace("<li>", "• ").replace("</li>", "\n").replace("<ul>", "").replace("</ul>", "")
     body = body.replace("<p>", "").replace("</p>", "\n").replace("<br>", "\n").replace("<br/>", "\n")
-    # remove remaining tags
-    import re
     body = re.sub(r"<[^>]+>", "", body).strip()
     if len(body) > 180:
         body = body[:177] + "..."
@@ -730,8 +789,8 @@ async def post_store_products():
         print("Product channel not found")
         return
 
-    # Post 2 or 3 products each hour
-    count = random.randint(2, 3)
+    # Post 5 or 6 products each hour
+    count = random.randint(5, 6)
     products = get_next_products(count)
 
     if not products:
@@ -749,7 +808,6 @@ async def post_store_products():
 async def before_post_store_products():
     await bot.wait_until_ready()
     # Small delay so the bot is fully ready and doesn't flood on restart
-    import asyncio
     await asyncio.sleep(30)
 
 def run_bot():
