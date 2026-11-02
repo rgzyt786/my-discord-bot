@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import re
 import asyncio
+import xml.etree.ElementTree as ET
 
 app = Flask('')
 @app.route('/')
@@ -37,6 +38,7 @@ VC_LOG_CHANNEL_ID = 1522299798575910985      # VC related logs
 OTHER_LOG_CHANNEL_ID = 1566410101571719258   # Everything else
 PRODUCT_CHANNEL_ID = 1520783991740039263     # Shopify products channel
 BUMP_CHANNEL_ID = 1566619766960169040        # Disboard bump reminder channel
+YT_NOTIFY_CHANNEL_ID = 1566803172943466578   # YouTube new video notifications
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -44,8 +46,16 @@ GROQ_KEY = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
 announced_games = set()
+announced_videos = set()   # tracks already posted YouTube video IDs
 conversation_history = defaultdict(list)
 MAX_HISTORY = 8
+
+# --- YOUTUBE CHANNELS TO WATCH ---
+# channel_id : display name
+YT_CHANNELS = {
+    "UChOiuSZdtCYQNi-hFcdTBIQ": "Leo Das Live",      # https://youtube.com/@leo_das_live
+    "UCDFKnTEtCa5ilzm-1WMck1Q": "John Wick",        # https://www.youtube.com/@johnwick40m
+}
 
 # --- SHOPIFY PRODUCT POSTER ---
 STORE_URL = "https://quicktoshop.in"
@@ -254,6 +264,8 @@ async def on_ready():
         post_store_products.start()
     if not disboard_bump_reminder.is_running():
         disboard_bump_reminder.start()
+    if not check_youtube_videos.is_running():
+        check_youtube_videos.start()
 
 @bot.event
 async def on_member_join(member):
@@ -842,6 +854,106 @@ async def before_disboard_bump_reminder():
     await bot.wait_until_ready()
     # Small delay after bot starts so it doesn't send immediately on restart
     await asyncio.sleep(20)
+
+# ====================== YOUTUBE NEW VIDEO NOTIFICATIONS ======================
+def fetch_latest_videos(channel_id, max_results=5):
+    """Fetch the latest videos from a YouTube channel using the public RSS feed (no API key needed)."""
+    url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    try:
+        response = requests.get(url, timeout=15)
+        if response.status_code != 200:
+            print(f"YT RSS error for {channel_id}: status {response.status_code}")
+            return []
+
+        # Parse Atom feed
+        root = ET.fromstring(response.content)
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "yt": "http://www.youtube.com/xml/schemas/2015",
+            "media": "http://search.yahoo.com/mrss/"
+        }
+
+        videos = []
+        for entry in root.findall("atom:entry", ns)[:max_results]:
+            video_id = entry.find("yt:videoId", ns)
+            title = entry.find("atom:title", ns)
+            published = entry.find("atom:published", ns)
+            link = entry.find("atom:link", ns)
+            author = entry.find("atom:author/atom:name", ns)
+
+            # Thumbnail
+            media_group = entry.find("media:group", ns)
+            thumbnail = None
+            if media_group is not None:
+                thumb = media_group.find("media:thumbnail", ns)
+                if thumb is not None:
+                    thumbnail = thumb.get("url")
+
+            if video_id is not None and title is not None:
+                videos.append({
+                    "id": video_id.text,
+                    "title": title.text,
+                    "url": f"https://www.youtube.com/watch?v={video_id.text}",
+                    "published": published.text if published is not None else None,
+                    "author": author.text if author is not None else "Unknown",
+                    "thumbnail": thumbnail
+                })
+        return videos
+    except Exception as e:
+        print(f"Error fetching YT RSS for {channel_id}: {e}")
+        return []
+
+@tasks.loop(minutes=15)
+async def check_youtube_videos():
+    """Check both YouTube channels for new videos and post notifications."""
+    channel = bot.get_channel(YT_NOTIFY_CHANNEL_ID)
+    if not channel:
+        print("YouTube notify channel not found")
+        return
+
+    for yt_channel_id, display_name in YT_CHANNELS.items():
+        try:
+            videos = fetch_latest_videos(yt_channel_id, max_results=5)
+            # Process oldest → newest so order is correct if multiple new ones appear
+            for video in reversed(videos):
+                vid = video["id"]
+                if vid in announced_videos:
+                    continue
+
+                # On first run after restart we only mark existing videos as seen
+                # (avoid flooding the channel with old videos)
+                if not hasattr(check_youtube_videos, "_initialized"):
+                    announced_videos.add(vid)
+                    continue
+
+                # New video found → post embed
+                embed = discord.Embed(
+                    title=f"🎬 New Video from {display_name}!",
+                    description=f"**{video['title']}**\n\n[▶️ Watch Now]({video['url']})",
+                    color=0xFF0000,  # YouTube red
+                    url=video["url"],
+                    timestamp=datetime.now(timezone.utc)
+                )
+                if video.get("thumbnail"):
+                    embed.set_image(url=video["thumbnail"])
+                embed.set_footer(text=f"Gamer's Syndicate ☠️ • {display_name}")
+                embed.set_author(name=display_name, icon_url="https://www.youtube.com/s/desktop/6e3ee6da/img/favicon_144x144.png")
+
+                await channel.send(content=f"@everyone New upload from **{display_name}**! 🔥", embed=embed)
+                announced_videos.add(vid)
+                print(f"Posted new video: {video['title']} from {display_name}")
+
+        except Exception as e:
+            print(f"Error checking YouTube channel {display_name}: {e}")
+
+    # Mark that we have finished the first (initialization) pass
+    check_youtube_videos._initialized = True
+
+@check_youtube_videos.before_loop
+async def before_check_youtube_videos():
+    await bot.wait_until_ready()
+    # Small delay so bot is fully online
+    await asyncio.sleep(25)
 
 def run_bot():
     bot.run(TOKEN)
