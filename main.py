@@ -38,11 +38,11 @@ MEERA_CHANNEL_ID = 1565777117608677556
 MEERA_CHANNEL_2 = 1565795643979731076
 MEERA_CHANNELS = [MEERA_CHANNEL_ID, MEERA_CHANNEL_2]
 FREE_GAMES_CHANNEL_ID = 1566079090648293396
-VC_LOG_CHANNEL_ID = 1522299798575910985      # VC related logs
-OTHER_LOG_CHANNEL_ID = 1566410101571719258   # Everything else
-PRODUCT_CHANNEL_ID = 1520783991740039263     # Shopify products channel
-BUMP_CHANNEL_ID = 1566619766960169040        # Disboard bump reminder channel
-YT_NOTIFY_CHANNEL_ID = 1566803172943466578   # YouTube new video notifications
+VC_LOG_CHANNEL_ID = 1522299798575910985
+OTHER_LOG_CHANNEL_ID = 1566410101571719258
+PRODUCT_CHANNEL_ID = 1520783991740039263
+BUMP_CHANNEL_ID = 1566619766960169040
+YT_NOTIFY_CHANNEL_ID = 1566803172943466578
 
 # --- ENV ---
 TOKEN = os.environ.get("TOKEN")
@@ -81,12 +81,12 @@ FEMALE_KEYWORDS = [
 ]
 
 BUMP_MESSAGES = [
-    "@everyone 🔥 **Bump Time!** 🔥\n\nDisboard cooldown is almost over.\nType *`/bump`** right now and help Gamer's Syndicate climb the ranks!\n\nMore visibility = more Indian gamers joining us 🎮💜",
-    "@everyone ⚡ **Quick Bump Check!** ⚡\n\nWho's free for 2 seconds?\nJust type *`/bump`** and keep the server shining on Disboard!\n\nLet's gooo 🚀",
-    "@everyone 🎮 **Gamer's Syndicate needs a bump!** 🎮\n\nCooldown ready → Type *`/bump`**\n\nEvery bump brings new Valorant, GTA RP, Minecraft & Roblox players. Don't sleep on it!",
-    "@everyone 💜 **Bump Squad Assemble!** 💜\n\nDrop *`/bump`** in this channel.\nHelp us stay on top so more desi gamers can find us!\n\nThank you legends 🔥",
-    "@everyone 🚀 **Disboard Bump Alert!** 🚀\n\nIt's time again!\nType *`/bump`** now and push Gamer's Syndicate higher.\n\nActive members only 💪",
-    "@everyone 🔥 **1-minute mission:**\n\n1. Type *`/bump`**\n2. Done.\n\nThat's it. Help the server grow so we can play more together!",
+    "@everyone 🔥 **Bump Time!** 🔥\n\nDisboard cooldown is almost over.\nType `/bump` right now and help Gamer's Syndicate climb the ranks!\n\nMore visibility = more Indian gamers joining us 🎮💜",
+    "@everyone ⚡ **Quick Bump Check!** ⚡\n\nWho's free for 2 seconds?\nJust type `/bump` and keep the server shining on Disboard!\n\nLet's gooo 🚀",
+    "@everyone 🎮 **Gamer's Syndicate needs a bump!** 🎮\n\nCooldown ready → Type `/bump`\n\nEvery bump brings new Valorant, GTA RP, Minecraft & Roblox players. Don't sleep on it!",
+    "@everyone 💜 **Bump Squad Assemble!** 💜\n\nDrop `/bump` in this channel.\nHelp us stay on top so more desi gamers can find us!\n\nThank you legends 🔥",
+    "@everyone 🚀 **Disboard Bump Alert!** 🚀\n\nIt's time again!\nType `/bump` now and push Gamer's Syndicate higher.\n\nActive members only 💪",
+    "@everyone 🔥 **1-minute mission:**\n\n1. Type `/bump`\n2. Done.\n\nThat's it. Help the server grow so we can play more together!",
 ]
 
 
@@ -715,7 +715,7 @@ RULES:
                 ]
                 messages.extend(conversation_history[user_id])
                 chat = groq_client.chat.completions.create(
-                    model="openai/gpt-oss-20b",
+                    model="llama-3.3-70b-versatile",   # Changed to a real working Groq model
                     messages=messages,
                     max_tokens=400,
                     temperature=0.9
