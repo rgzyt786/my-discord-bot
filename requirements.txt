@@ -1,4 +1,7 @@
 discord.py
-flask
-groq
+aiohttp
+yt-dlp
+PyNaCl
+python-dotenv
 requests
+Flask
