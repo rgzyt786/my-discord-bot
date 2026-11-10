@@ -13,7 +13,6 @@ import asyncio
 import xml.etree.ElementTree as ET
 
 app = Flask('')
-
 @app.route('/')
 def home():
     return "Bot LIVE 24/7 - Meera is Online"
@@ -89,7 +88,6 @@ BUMP_MESSAGES = [
     "@everyone 🔥 **1-minute mission:**\n\n1. Type `/bump`\n2. Done.\n\nThat's it. Help the server grow so we can play more together!",
 ]
 
-
 async def send_vc_log(embed):
     channel = bot.get_channel(VC_LOG_CHANNEL_ID)
     if channel is None:
@@ -99,7 +97,6 @@ async def send_vc_log(embed):
         await channel.send(embed=embed)
     except Exception as e:
         print(f"[VC LOG] Failed to send: {e}")
-
 
 async def send_other_log(embed):
     channel = bot.get_channel(OTHER_LOG_CHANNEL_ID)
@@ -111,13 +108,11 @@ async def send_other_log(embed):
     except Exception as e:
         print(f"[OTHER LOG] Failed to send: {e}")
 
-
 def get_product_priority(product):
     title = (product.get("title") or "").lower()
     product_type = product.get("product_type") or ""
     tags = set(t.lower() for t in product.get("tags", []))
     body = (product.get("body_html") or "").lower()
-
     for kw in GAMING_KEYWORDS:
         if kw in title or kw in body or any(kw in t for t in tags):
             return 0
@@ -131,7 +126,6 @@ def get_product_priority(product):
         if kw in title:
             return 2
     return 3
-
 
 def fetch_all_products():
     all_products = []
@@ -154,7 +148,6 @@ def fetch_all_products():
         except Exception as e:
             print(f"Error fetching products page {page}: {e}")
             break
-
     all_products.sort(key=lambda p: (get_product_priority(p), p.get("id", 0)))
     print(f"Fetched and prioritized {len(all_products)} products")
     counts = {0: 0, 1: 0, 2: 0, 3: 0}
@@ -162,7 +155,6 @@ def fetch_all_products():
         counts[get_product_priority(p)] += 1
     print(f"Priority counts → Gaming: {counts[0]}, Electronics: {counts[1]}, Female: {counts[2]}, Other: {counts[3]}")
     return all_products
-
 
 def get_next_products(count=5):
     global product_index, cached_products, last_fetch_time
@@ -184,7 +176,6 @@ def get_next_products(count=5):
         selected.append(product)
         product_index = (product_index + 1) % len(cached_products)
     return selected
-
 
 def make_product_embed(product):
     title = product.get("title", "Awesome Product")
@@ -228,7 +219,6 @@ def make_product_embed(product):
     embed.set_footer(text="Quickto • Free delivery across India 🚚")
     return embed
 
-
 @bot.event
 async def on_ready():
     print(f"BOT ONLINE: {bot.user} as Meera")
@@ -242,7 +232,6 @@ async def on_ready():
         disboard_bump_reminder.start()
     if not check_youtube_videos.is_running():
         check_youtube_videos.start()
-
 
 @bot.event
 async def on_member_join(member):
@@ -277,7 +266,6 @@ async def on_member_join(member):
             await welcome_channel.send(embed=embed)
     except Exception as e:
         print(f"Welcome error: {e}")
-
 
 # ====================== VC LOGS ======================
 @bot.event
@@ -381,7 +369,6 @@ async def on_voice_state_update(member, before, after):
     except Exception as e:
         print(f"on_voice_state_update error: {e}")
 
-
 # ====================== OTHER LOGS ======================
 @bot.event
 async def on_member_remove(member):
@@ -416,7 +403,6 @@ async def on_member_remove(member):
     except Exception as e:
         print(f"on_member_remove error: {e}")
 
-
 @bot.event
 async def on_member_ban(guild, user):
     try:
@@ -436,7 +422,6 @@ async def on_member_ban(guild, user):
     except Exception as e:
         print(f"on_member_ban error: {e}")
 
-
 @bot.event
 async def on_member_unban(guild, user):
     try:
@@ -453,7 +438,6 @@ async def on_member_unban(guild, user):
                 return
     except Exception as e:
         print(f"on_member_unban error: {e}")
-
 
 @bot.event
 async def on_member_update(before, after):
@@ -537,7 +521,6 @@ async def on_member_update(before, after):
     except Exception as e:
         print(f"on_member_update error: {e}")
 
-
 # =============== MESSAGE DELETE (raw) ===============
 @bot.event
 async def on_raw_message_delete(payload):
@@ -600,7 +583,6 @@ async def on_raw_message_delete(payload):
     except Exception as e:
         print(f"on_raw_message_delete error: {e}")
 
-
 @bot.event
 async def on_guild_channel_create(channel):
     try:
@@ -630,7 +612,6 @@ async def on_guild_channel_create(channel):
     except Exception as e:
         print(f"on_guild_channel_create error: {e}")
 
-
 @bot.event
 async def on_guild_channel_delete(channel):
     try:
@@ -659,7 +640,6 @@ async def on_guild_channel_delete(channel):
         await send_other_log(embed)
     except Exception as e:
         print(f"on_guild_channel_delete error: {e}")
-
 
 # ====================== MEERA AI ======================
 @bot.event
@@ -715,7 +695,7 @@ RULES:
                 ]
                 messages.extend(conversation_history[user_id])
                 chat = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",   # Changed to a real working Groq model
+                    model="openai/gpt-oss-120b",          # ← FIXED (old model was removed by Groq)
                     messages=messages,
                     max_tokens=400,
                     temperature=0.9
@@ -726,11 +706,10 @@ RULES:
                     conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY:]
                 await message.reply(answer[:1900])
             except Exception as e:
-                print(f"Meera AI Error: {e}")
+                print(f"Meera AI Error: {e}")          # real error will now show in console
                 await message.reply("Ayy my brain lagged 😅 ask again, I'm Meera!")
         return
     await bot.process_commands(message)
-
 
 # ====================== FREE GAMES ======================
 @tasks.loop(hours=2)
@@ -779,11 +758,9 @@ async def check_free_games():
         except Exception as e:
             print(f"Error checking {platform_name}: {e}")
 
-
 @check_free_games.before_loop
 async def before_check_free_games():
     await bot.wait_until_ready()
-
 
 # ====================== STORE PRODUCT POSTER ======================
 @tasks.loop(hours=1)
@@ -804,12 +781,10 @@ async def post_store_products():
         except Exception as e:
             print(f"Error posting product: {e}")
 
-
 @post_store_products.before_loop
 async def before_post_store_products():
     await bot.wait_until_ready()
     await asyncio.sleep(30)
-
 
 # ====================== DISBOARD BUMP REMINDER ======================
 @tasks.loop(minutes=115)
@@ -824,12 +799,10 @@ async def disboard_bump_reminder():
     except Exception as e:
         print(f"Bump reminder error: {e}")
 
-
 @disboard_bump_reminder.before_loop
 async def before_disboard_bump_reminder():
     await bot.wait_until_ready()
     await asyncio.sleep(20)
-
 
 # ====================== YOUTUBE NEW VIDEO NOTIFICATIONS ======================
 def parse_yt_published(published_str):
@@ -841,7 +814,6 @@ def parse_yt_published(published_str):
         return datetime.fromisoformat(published_str)
     except Exception:
         return None
-
 
 def fetch_latest_videos(channel_id, max_results=5):
     url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
@@ -888,7 +860,6 @@ def fetch_latest_videos(channel_id, max_results=5):
     except Exception as e:
         print(f"Error fetching YT RSS for {channel_id}: {e}")
         return []
-
 
 @tasks.loop(minutes=15)
 async def check_youtube_videos():
@@ -938,12 +909,10 @@ async def check_youtube_videos():
             print(f"Error checking YouTube channel {display_name}: {e}")
     check_youtube_videos._initialized = True
 
-
 @check_youtube_videos.before_loop
 async def before_check_youtube_videos():
     await bot.wait_until_ready()
     await asyncio.sleep(25)
-
 
 def run_bot():
     if not TOKEN:
@@ -951,11 +920,9 @@ def run_bot():
         return
     bot.run(TOKEN)
 
-
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
 
 if __name__ == "__main__":
     Thread(target=run_bot).start()
